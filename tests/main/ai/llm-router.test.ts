@@ -344,4 +344,26 @@ describe("LLMRouter", () => {
       ).rejects.toThrow("Responses API stream error: rate limit exceeded");
     });
   });
+
+  describe("completeOpenAI - streaming", () => {
+    it("should parse the final SSE line when the stream has no trailing newline", async () => {
+      fetchSpy.mockResolvedValueOnce(
+        createRawSSEResponse(
+          [
+            'data: {"choices":[{"delta":{"content":"final chat chunk"}}]}',
+          ].join("\n"),
+        ),
+      );
+
+      const router = new LLMRouter(baseConfig);
+      const chunks: string[] = [];
+      const result = await router.complete(
+        [{ role: "user", content: "test" }],
+        (chunk) => chunks.push(chunk),
+      );
+
+      expect(chunks).toEqual(["final chat chunk"]);
+      expect(result.content).toBe("final chat chunk");
+    });
+  });
 });
