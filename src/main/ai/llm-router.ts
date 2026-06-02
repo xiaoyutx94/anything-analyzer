@@ -86,6 +86,14 @@ function requireLLMContent(content: string, fieldName: string): string {
   return content;
 }
 
+function parseStreamJson<T>(data: string, providerName: string): T {
+  try {
+    return JSON.parse(data) as T;
+  } catch {
+    throw new Error(`${providerName} stream error: malformed JSON payload`);
+  }
+}
+
 /**
  * Sanitize string content in LLM request body to remove control characters
  * that may break JSON parsing in intermediate proxies.
@@ -741,13 +749,7 @@ export class LLMRouter {
       if (!trimmed || !trimmed.startsWith("data: ")) return;
       const data = trimmed.slice(6);
       if (data === "[DONE]") return;
-      let parsed: any;
-      try {
-        parsed = JSON.parse(data) as any;
-      } catch {
-        /* skip malformed JSON */
-        return;
-      }
+      const parsed = parseStreamJson<any>(data, "OpenAI");
       if (parsed.error) {
         const errorMsg = parsed.error.message || "Unknown stream error";
         throw new Error(`OpenAI stream error: ${errorMsg}`);
@@ -798,13 +800,7 @@ export class LLMRouter {
         return;
       }
       if (!trimmed.startsWith("data: ")) return;
-      let parsed: any;
-      try {
-        parsed = JSON.parse(trimmed.slice(6)) as any;
-      } catch {
-        /* skip malformed JSON */
-        return;
-      }
+      const parsed = parseStreamJson<any>(trimmed.slice(6), "Responses API");
       if (currentEvent === "response.output_text.delta" && parsed.delta) {
         fullContent += parsed.delta;
         onChunk(parsed.delta);
@@ -853,26 +849,19 @@ export class LLMRouter {
     const processLine = (line: string): void => {
       const trimmed = line.trim();
       if (!trimmed || !trimmed.startsWith("data: ")) return;
-      try {
-        const parsed = JSON.parse(trimmed.slice(6)) as any;
-        if (parsed.type === "error") {
-          const errorMsg = parsed.error?.message || "Unknown stream error";
-          throw new Error(`Anthropic stream error: ${errorMsg}`);
-        }
-        if (parsed.type === "content_block_delta" && parsed.delta?.text) {
-          fullContent += parsed.delta.text;
-          onChunk(parsed.delta.text);
-        }
-        if (parsed.type === "message_start" && parsed.message?.usage)
-          promptTokens = parsed.message.usage.input_tokens;
-        if (parsed.type === "message_delta" && parsed.usage)
-          completionTokens = parsed.usage.output_tokens || 0;
-      } catch (err) {
-        if (err instanceof Error && err.message.startsWith("Anthropic stream error:")) {
-          throw err;
-        }
-        /* skip malformed JSON */
+      const parsed = parseStreamJson<any>(trimmed.slice(6), "Anthropic");
+      if (parsed.type === "error") {
+        const errorMsg = parsed.error?.message || "Unknown stream error";
+        throw new Error(`Anthropic stream error: ${errorMsg}`);
       }
+      if (parsed.type === "content_block_delta" && parsed.delta?.text) {
+        fullContent += parsed.delta.text;
+        onChunk(parsed.delta.text);
+      }
+      if (parsed.type === "message_start" && parsed.message?.usage)
+        promptTokens = parsed.message.usage.input_tokens;
+      if (parsed.type === "message_delta" && parsed.usage)
+        completionTokens = parsed.usage.output_tokens || 0;
     };
 
     while (true) {

@@ -689,6 +689,24 @@ describe("LLMRouter", () => {
         router.complete([{ role: "user", content: "test" }], () => {}),
       ).rejects.toThrow("LLM 响应格式异常: 缺少 output_text 字段");
     });
+
+    it("should reject malformed Responses API stream JSON", async () => {
+      const config: LLMProviderConfig = { ...baseConfig, apiType: "responses" };
+      fetchSpy.mockResolvedValueOnce(
+        createRawSSEResponse(
+          [
+            "event: response.output_text.delta",
+            'data: {"delta":"broken"',
+          ].join("\n"),
+        ),
+      );
+
+      const router = new LLMRouter(config);
+
+      await expect(
+        router.complete([{ role: "user", content: "test" }], () => {}),
+      ).rejects.toThrow("Responses API stream error: malformed JSON payload");
+    });
   });
 
   describe("completeOpenAI - streaming", () => {
@@ -743,6 +761,18 @@ describe("LLMRouter", () => {
       await expect(
         router.complete([{ role: "user", content: "test" }], () => {}),
       ).rejects.toThrow("LLM 响应格式异常: 缺少 message.content 字段");
+    });
+
+    it("should reject malformed OpenAI chat stream JSON", async () => {
+      fetchSpy.mockResolvedValueOnce(
+        createRawSSEResponse('data: {"choices":[{"delta":{"content":"broken"}}'),
+      );
+
+      const router = new LLMRouter(baseConfig);
+
+      await expect(
+        router.complete([{ role: "user", content: "test" }], () => {}),
+      ).rejects.toThrow("OpenAI stream error: malformed JSON payload");
     });
   });
 
@@ -818,6 +848,25 @@ describe("LLMRouter", () => {
       await expect(
         router.complete([{ role: "user", content: "test" }], () => {}),
       ).rejects.toThrow("LLM 响应格式异常: 缺少 text content 字段");
+    });
+
+    it("should reject malformed Anthropic stream JSON", async () => {
+      const config: LLMProviderConfig = {
+        name: "minimax",
+        baseUrl: "https://api.minimax.io/anthropic/v1",
+        apiKey: "test-minimax-key",
+        model: "MiniMax-M2.7",
+        maxTokens: 4096,
+      };
+      fetchSpy.mockResolvedValueOnce(
+        createRawSSEResponse('data: {"type":"content_block_delta","delta":{"text":"broken"}'),
+      );
+
+      const router = new LLMRouter(config);
+
+      await expect(
+        router.complete([{ role: "user", content: "test" }], () => {}),
+      ).rejects.toThrow("Anthropic stream error: malformed JSON payload");
     });
   });
 });
