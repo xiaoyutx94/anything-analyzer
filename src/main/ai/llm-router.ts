@@ -574,6 +574,7 @@ export class LLMRouter {
           let result: string;
           if (!fc.id) throw new Error("function_call missing call_id");
           if (!fc.name) throw new Error("function_call missing name");
+          if (typeof fc.arguments !== "string") throw new Error("function_call arguments must be a string");
           try {
             const args = JSON.parse(fc.arguments || "{}");
             result = await callTool(fc.name, args);

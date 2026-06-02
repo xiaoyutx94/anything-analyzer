@@ -556,6 +556,27 @@ describe("LLMRouter", () => {
         ),
       ).rejects.toThrow("function_call missing call_id");
     });
+
+    it("should reject Responses API function calls with non-string arguments", async () => {
+      const config: LLMProviderConfig = { ...baseConfig, apiType: "responses" };
+      fetchSpy.mockResolvedValueOnce(
+        createJSONResponse({
+          output: [
+            { type: "function_call", id: "call-1", name: "lookup", arguments: { query: "test" } },
+          ],
+        }),
+      );
+
+      const router = new LLMRouter(config);
+
+      await expect(
+        router.completeWithTools(
+          [{ role: "user", content: "test" }],
+          [{ name: "lookup", description: "Lookup", inputSchema: { type: "object" } }],
+          async () => "unused",
+        ),
+      ).rejects.toThrow("function_call arguments must be a string");
+    });
   });
 
   describe("completeWithTools - Anthropic", () => {
